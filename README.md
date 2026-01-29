@@ -1,3 +1,4 @@
+<img width="1918" height="972" alt="Screenshot 2026-01-29 211341" src="https://github.com/user-attachments/assets/3a3d0802-9eae-4adc-923e-5aa61867a9e9" />
 # Webhook Repository - GitHub Actions Receiver
 
 This is a Flask-based webhook receiver that captures GitHub repository events (Push, Pull Request, Merge) and stores them in MongoDB.
