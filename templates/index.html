@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Repository Actions</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 100%;
+            max-width: 900px;
+            margin-top: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .actions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .action-item {
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            background: #f9f9f9;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .action-item:hover {
+            background: #f0f0f0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .action-item.PUSH {
+            border-left-color: #667eea;
+        }
+
+        .action-item.PULL_REQUEST {
+            border-left-color: #f093fb;
+        }
+
+        .action-item.MERGE {
+            border-left-color: #4facfe;
+        }
+
+        .action-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-PUSH {
+            background: #e3f2fd;
+            color: #667eea;
+        }
+
+        .badge-PULL_REQUEST {
+            background: #f3e5f5;
+            color: #c2185b;
+        }
+
+        .badge-MERGE {
+            background: #e0f2f1;
+            color: #00897b;
+        }
+
+        .action-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .action-author {
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .branch {
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #d63384;
+        }
+
+        .action-timestamp {
+            font-size: 12px;
+            color: #999;
+            margin-top: 10px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state p {
+            font-size: 16px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .last-updated {
+            text-align: right;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #f0f0f0;
+            padding-top: 15px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            .action-item {
+                padding: 15px;
+            }
+
+            .action-text {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Repository Actions Feed</h1>
+            <p>Real-time updates from GitHub (Polling every 15 seconds)</p>
+        </div>
+
+        <div id="actionsContainer" class="actions-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading actions...</p>
+            </div>
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="lastUpdated">-</span>
+        </div>
+    </div>
+
+    <script>
+        const POLL_INTERVAL = 15000; // 15 seconds
+        let pollTimer;
+
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZoneName: 'short'
+            });
+        }
+
+        function getOrdinalSuffix(day) {
+            if (day > 3 && day < 21) return 'th';
+            switch (day % 10) {
+                case 1: return 'st';
+                case 2: return 'nd';
+                case 3: return 'rd';
+                default: return 'th';
+            }
+        }
+
+        function formatActionText(action) {
+            const author = action.author;
+            const timestamp = formatTimestamp(action.timestamp);
+
+            let text = '';
+
+            switch (action.action) {
+                case 'PUSH':
+                    text = `<span class="action-author">${author}</span> pushed to <span class="branch">${action.to_branch}</span> on ${timestamp}`;
+                    break;
+                case 'PULL_REQUEST':
+                    text = `<span class="action-author">${author}</span> submitted a pull request from <span class="branch">${action.from_branch}</span> to <span class="branch">${action.to_branch}</span> on ${timestamp}`;
+                    break;
+                case 'MERGE':
+                    text = `<span class="action-author">${author}</span> merged branch <span class="branch">${action.from_branch}</span> to <span class="branch">${action.to_branch}</span> on ${timestamp}`;
+                    break;
+                default:
+                    text = 'Unknown action';
+            }
+
+            return text;
+        }
+
+        function renderActions(actions) {
+            const container = document.getElementById('actionsContainer');
+
+            if (!actions || actions.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p>No actions yet. Waiting for webhook events...</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = actions.map(action => `
+                <div class="action-item ${action.action}">
+                    <span class="action-badge badge-${action.action}">${action.action.replace('_', ' ')}</span>
+                    <div class="action-text">${getActionText(action)}</div>
+                    <div class="action-timestamp">ID: ${action.request_id || action._id}</div>
+                </div>
+            `).join('');
+        }
+
+        function getActionText(action) {
+            const author = action.author;
+            const timestamp = formatTimestamp(action.timestamp);
+
+            switch (action.action) {
+                case 'PUSH':
+                    return `<span class="action-author">${author}</span> pushed to <span class="branch">${action.to_branch}</span> on ${timestamp}`;
+                case 'PULL_REQUEST':
+                    return `<span class="action-author">${author}</span> submitted a pull request from <span class="branch">${action.from_branch}</span> to <span class="branch">${action.to_branch}</span> on ${timestamp}`;
+                case 'MERGE':
+                    return `<span class="action-author">${author}</span> merged branch <span class="branch">${action.from_branch}</span> to <span class="branch">${action.to_branch}</span> on ${timestamp}`;
+                default:
+                    return 'Unknown action';
+            }
+        }
+
+        function updateLastUpdated() {
+            const now = new Date();
+            document.getElementById('lastUpdated').textContent = now.toLocaleTimeString();
+        }
+
+        function fetchActions() {
+            fetch('/api/actions')
+                .then(response => response.json())
+                .then(data => {
+                    renderActions(data);
+                    updateLastUpdated();
+                })
+                .catch(error => {
+                    console.error('Error fetching actions:', error);
+                    document.getElementById('actionsContainer').innerHTML = `
+                        <div class="empty-state">
+                            <p>Error loading actions. Please check your connection.</p>
+                        </div>
+                    `;
+                });
+        }
+
+        function startPolling() {
+            fetchActions(); // Initial fetch
+            pollTimer = setInterval(fetchActions, POLL_INTERVAL);
+        }
+
+        // Start polling when page loads
+        document.addEventListener('DOMContentLoaded', startPolling);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (pollTimer) clearInterval(pollTimer);
+        });
+    </script>
+</body>
+</html>
