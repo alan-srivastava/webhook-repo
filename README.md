@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ### 4. Configure Environment Variables
 Update `.env` file with your MongoDB URI (already configured):
 ```
-MONGO_URI=mongodb+srv://Python:Alankrit@cluster0.nzavehg.mongodb.net/
+MONGO_URI=mongodb+srv://<username>:<password>@cluster0.nzavehg.mongodb.net/
 ```
 
 ### 5. Run the Application
