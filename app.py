@@ -18,9 +18,13 @@ try:
     client = MongoClient(MONGO_URI)
     db = client[DB_NAME]
     collection = db[COLLECTION_NAME]
-    print("Connected to MongoDB successfully")
+    # Verify connection
+    try:
+        client.admin.command('ping')
+    except Exception as e:
+        collection = None
 except Exception as e:
-    print(f"Failed to connect to MongoDB: {e}")
+    collection = None
 
 @app.route('/')
 def index():
@@ -36,6 +40,8 @@ def webhook():
         if not payload:
             return jsonify({'error': 'No payload received'}), 400
         
+        event = request.headers.get('X-GitHub-Event', '')
+
         # Determine action type
         action = None
         author = None
@@ -43,33 +49,34 @@ def webhook():
         to_branch = None
         request_id = None
         timestamp = None
-        
-        # Handle PUSH event
-        if 'push' in request.headers.get('X-GitHub-Event', ''):
-            action = 'PUSH'
-            author = payload.get('pusher', {}).get('name', 'Unknown')
-            to_branch = payload.get('ref', '').split('/')[-1]
-            from_branch = to_branch
-            request_id = payload.get('head_commit', {}).get('id', '')[:7] if payload.get('head_commit') else ''
-            timestamp = payload.get('head_commit', {}).get('timestamp', datetime.utcnow().isoformat()) if payload.get('head_commit') else datetime.utcnow().isoformat()
-        
-        # Handle PULL_REQUEST event
-        elif 'pull_request' in request.headers.get('X-GitHub-Event', ''):
+
+        # Handle MERGE event first (pull_request with merged = true)
+        if event == 'pull_request' and payload.get('pull_request', {}).get('merged'):
+            action = 'MERGE'
+            author = payload.get('pull_request', {}).get('merged_by', {}).get('login') or payload.get('pull_request', {}).get('user', {}).get('login', 'Unknown')
+            from_branch = payload.get('pull_request', {}).get('head', {}).get('ref', '')
+            to_branch = payload.get('pull_request', {}).get('base', {}).get('ref', '')
+            request_id = str(payload.get('pull_request', {}).get('id', ''))
+            timestamp = payload.get('pull_request', {}).get('merged_at', datetime.utcnow().isoformat())
+
+        # Handle PULL_REQUEST event (not merged)
+        elif event == 'pull_request':
             action = 'PULL_REQUEST'
             author = payload.get('pull_request', {}).get('user', {}).get('login', 'Unknown')
             from_branch = payload.get('pull_request', {}).get('head', {}).get('ref', '')
             to_branch = payload.get('pull_request', {}).get('base', {}).get('ref', '')
             request_id = str(payload.get('pull_request', {}).get('id', ''))
             timestamp = payload.get('pull_request', {}).get('created_at', datetime.utcnow().isoformat())
-        
-        # Handle MERGE event (through push to main/master or pull_request merged)
-        elif 'pull_request' in request.headers.get('X-GitHub-Event', '') and payload.get('pull_request', {}).get('merged'):
-            action = 'MERGE'
-            author = payload.get('pull_request', {}).get('merged_by', {}).get('login', 'Unknown')
-            from_branch = payload.get('pull_request', {}).get('head', {}).get('ref', '')
-            to_branch = payload.get('pull_request', {}).get('base', {}).get('ref', '')
-            request_id = str(payload.get('pull_request', {}).get('id', ''))
-            timestamp = payload.get('pull_request', {}).get('merged_at', datetime.utcnow().isoformat())
+
+        # Handle PUSH event
+        elif event == 'push':
+            action = 'PUSH'
+            author = payload.get('pusher', {}).get('name', 'Unknown')
+            to_branch = payload.get('ref', '').split('/')[-1]
+            from_branch = to_branch
+            request_id = payload.get('head_commit', {}).get('id', '')[:7] if payload.get('head_commit') else ''
+            timestamp = payload.get('head_commit', {}).get('timestamp', datetime.utcnow().isoformat()) if payload.get('head_commit') else datetime.utcnow().isoformat()
+
         else:
             return jsonify({'error': 'Unsupported event type'}), 400
         
@@ -89,13 +96,10 @@ def webhook():
         
         # Insert into MongoDB
         result = collection.insert_one(document)
-        
-        print(f"Document inserted: {result.inserted_id}")
         return jsonify({'status': 'success', 'id': str(result.inserted_id)}), 201
     
     except Exception as e:
-        print(f"Error processing webhook: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to process webhook'}), 500
 
 @app.route('/api/actions', methods=['GET'])
 def get_actions():
@@ -109,8 +113,7 @@ def get_actions():
         
         return jsonify(actions), 200
     except Exception as e:
-        print(f"Error fetching actions: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to fetch actions'}), 500
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
